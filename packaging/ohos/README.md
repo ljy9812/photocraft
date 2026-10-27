@@ -1,10 +1,10 @@
 # PhotoCraft for HarmonyOS (OpenHarmony) — ArkWeb shell
 
 Runs the official `photocraft-web` build — the same static site published as
-`photocraft-web-<version>.zip` on the GitHub release (see `packaging/web/`) —
-inside a HarmonyOS app. An ArkTS shell wraps an ArkWeb `Web` component and
-serves the site from the HAP's own `rawfile`: no network origin, no
-server-side code, no Rust/wasm toolchain involved.
+`photocraft-web-<version>.zip` on the GitHub release — inside a HarmonyOS app. An
+ArkTS shell wraps an ArkWeb `Web` component and serves the site from the
+HAP's own `rawfile`: no network origin, no server-side code, no Rust/wasm
+toolchain involved.
 
 ## How the shell works
 
@@ -12,7 +12,8 @@ server-side code, no Rust/wasm toolchain involved.
 |---|---|
 | Serving | `onInterceptRequest` maps the virtual origin `https://local.photocraft/` to `entry/src/main/resources/rawfile/web/` |
 | Opening files | `onShowFileSelector` → system `DocumentViewPicker`; the picked URI is handed back to the page's `<input type=file>` |
-| Saving | `a[download]` clicks are intercepted by a hook injected in `onPageEnd`; the blob is fetched, base64-chunked over a `MessageChannel` port to ArkTS, and written through `DocumentSavePicker` |
+| Saving | `a[download]` clicks on attached anchors are intercepted by a hook installed in `onPageEnd`; the blob is fetched, base64-chunked over a `MessageChannel` port to ArkTS, and written through `DocumentSavePicker` |
+| External links | dual path: `onLoadIntercept` for main-frame http(s) navigations + `multiWindowAccess(true)`/`onWindowNew` for `window.open` popups — both route to the system browser |
 
 ## Build (Windows host, DevEco Studio toolchain)
 
@@ -40,21 +41,20 @@ to match your signing material.
 Verified on a HarmonyOS laptop (HAD-W24, API 23, physical keyboard +
 touchscreen): install & launch, first screen with full CJK UI fonts, ~60 fps
 interaction (RenderService fps on the web surface), 190 s of continuous
-interaction without crashes, and text input via the physical keyboard through
-eframe's hidden-input focus chain.
+interaction without crashes, text input via the physical keyboard through
+eframe's hidden-input focus chain, and — after the save-bridge fixes of the
+follow-up rounds — a full open→edit→save→reopen round-trip (brush strokes
+byte- and pixel-verified, five consecutive exports, picker-based reopen).
 
 Known issues on that device class — all specific to ArkWeb's WebGL/ANGLE
 stack; the same web build runs cleanly in desktop Edge in both WebGPU and
 forced-WebGL modes:
 
-- Opening a document view (a loaded image, or a blank new image) freezes the
-  canvas with repeated `GL_INVALID_OPERATION ... Source and destination
-  textures of the draw are the same` errors while the app logic stays alive.
-  The editor is not usable for visual work on ArkWeb until this is resolved
-  (upstream renderer hardening or an ArkWeb fix).
-- The save bridge round-trips, but the written file has been observed to be
-  byte-identical to the source (edits not yet in the exported blob) on the
-  tested web build, and later export attempts in the same session can go
-  silent.
-- External links inside the page 404 against the virtual origin instead of
-  opening a system browser.
+- Opening a document view (a loaded image, or a blank new image) triggers a
+  `GL_INVALID_OPERATION ... Source and destination textures of the draw are
+  the same` error storm and can freeze the canvas while the app logic stays
+  alive. Not fixable from the ArkTS shell; needs upstream renderer
+  hardening or an ArkWeb fix.
+- The interface has no CJK font issue (runtime font channel from the zip's
+  `fonts/` directory); earlier releases wrote exports byte-identical to the
+  source on the tested build — retest against the release you fetch.

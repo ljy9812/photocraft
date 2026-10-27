@@ -3,6 +3,7 @@ import { picker, fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
 
 const TAG: string = 'PhotoCraft';
 const MAIN_URL: string = 'https://local.photocraft/index.html';
@@ -111,6 +112,20 @@ struct Index {
 
   private toast(msg: string): void {
     this.getUIContext().getPromptAction().showToast({ message: msg });
+  }
+
+  // F7 fix: the shell only serves the virtual source, so page links to the
+  // outside web used to 404 silently (dead click). Hand external navigations
+  // to the system browser instead.
+  private openExternal(url: string): void {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      context.openLink(url, { appLinkingOnly: false })
+        .then(() => hilog.info(0x0000, TAG, 'external link opened: ' + url))
+        .catch((e: BusinessError) => hilog.warn(0x0000, TAG, 'openLink failed: ' + e.code + ' ' + url));
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'openLink threw: ' + url);
+    }
   }
 
   private notFound(path: string): WebResourceResponse {
@@ -258,6 +273,39 @@ struct Index {
         .domStorageAccess(true)
         .javaScriptAccess(true)
         .zoomAccess(false)
+        .onLoadIntercept((event: OnLoadInterceptEvent) => {
+          // F7: our virtual source passes through; external http(s) main-frame
+          // navigations go to the system browser, external subresources are
+          // blocked (same semantics as the old 404, but visible for links).
+          const url: string = event.data.getRequestUrl();
+          if (url.startsWith(URL_PREFIX)) {
+            return false;
+          }
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            if (event.data.isMainFrame()) {
+              hilog.info(0x0000, TAG, 'external nav -> browser: ' + url);
+              this.openExternal(url);
+            } else {
+              hilog.warn(0x0000, TAG, 'external subresource blocked: ' + url);
+            }
+            return true;
+          }
+          return false; // blob:/data:/about: — the webview's own business
+        })
+        .multiWindowAccess(true)
+        .onWindowNew((event: OnWindowNewEvent) => {
+          // F7 part 2: the wasm apps open their links via window.open(url,
+          // '_blank') (eframe web open_url -> web_sys Window.open). With
+          // multiWindowAccess(false) ArkWeb drops that popup silently — no
+          // onLoadIntercept event fires, so part 1 alone cannot catch it.
+          // Accept the request, route the URL to the system browser, and
+          // decline the popup itself: a null controller means "no new window".
+          // The setWebController call is mandatory — skipping it blocks the
+          // renderer.
+          hilog.info(0x0000, TAG, 'window.open -> browser: ' + event.targetUrl);
+          this.openExternal(event.targetUrl);
+          event.handler.setWebController(null);
+        })
         .onInterceptRequest((event: OnInterceptRequestEvent) => {
           return this.handleRequest(event.request.getRequestUrl());
         })
