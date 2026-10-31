@@ -1,22 +1,3 @@
-# PhotoCraft for HarmonyOS (OpenHarmony) — ArkWeb shell
-
-Runs the official `photocraft-web` build — the same static site published as
-`photocraft-web-<version>.zip` on the GitHub release — inside a HarmonyOS app. An
-ArkTS shell wraps an ArkWeb `Web` component and serves the site from
-the HAP's own `rawfile`: no network origin, no server-side code.
-
-This branch (`ohos-webshell`) is the integrated form: the ArkWeb shell
-packaging under `packaging/ohos/` plus the wasm-side CJK font change
-merged from the `cjk-web-face` branch (which remains the clean
-single-purpose form for an upstream PR). Build either variant from this
-one checkout.
-
-## How the shell works
-
-| Concern | Mechanism |
-|---|---|
-| Serving | `onInterceptRequest` maps the virtual origin `https://local.photocraft/` to `entry/src/main/resources/rawfile/web/` |
-| Opening files | `onShowFileSelector` → system `DocumentViewPicker`; the picked URI is handed back to the page's `<input type=file>` |
 | Saving | `a[download]` clicks on attached anchors are intercepted by a hook installed in `onPageEnd`; the blob is fetched, base64-chunked over a `MessageChannel` port to ArkTS, and written through `DocumentSavePicker` |
 | External links | dual path: `onLoadIntercept` for main-frame http(s) navigations + `multiWindowAccess(true)`/`onWindowNew` for `window.open` popups — both route to the system browser |
 
